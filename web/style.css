@@ -1,0 +1,115 @@
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+:root {
+  --body-bg:   #0f1117;
+  --card-bg:   #16192a;
+  --card-hdr:  #1c2035;
+  --border:    rgba(255,255,255,0.08);
+}
+
+body {
+  background: var(--body-bg);
+  min-height: 100vh;
+}
+
+.navbar {
+  background: #0d0f1a !important;
+  min-height: 52px;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--card-bg);
+  border-color: var(--border);
+}
+
+.card-header {
+  background: var(--card-hdr);
+  border-color: var(--border);
+  font-size: .85rem;
+  padding: .5rem .75rem;
+}
+
+/* ── Drop Zone ─────────────────────────────────────────────────────────────── */
+.drop-zone {
+  border: 2px dashed var(--border) !important;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.drop-zone:hover,
+.drop-zone.drop-active {
+  background: rgba(13,110,253,.08) !important;
+  border-color: #0d6efd !important;
+}
+
+/* ── Stat Cards ────────────────────────────────────────────────────────────── */
+.stat-card {
+  border-left: 3px solid #0d6efd;
+}
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.stat-label {
+  font-size: .7rem;
+  color: #6c757d;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* ── Protocol Badges ───────────────────────────────────────────────────────── */
+span.badge.proto-tcp    { background: #0d6efd; }
+span.badge.proto-udp    { background: #198754; }
+span.badge.proto-icmp   { background: #ffc107; color: #000; }
+span.badge.proto-http   { background: #0dcaf0; color: #000; }
+span.badge.proto-https  { background: #6f42c1; }
+span.badge.proto-dns    { background: #fd7e14; }
+span.badge.proto-arp    { background: #6c757d; }
+span.badge.proto-other  { background: #343a40; }
+
+/* ── Packet Table ──────────────────────────────────────────────────────────── */
+#pkt-table           { font-size: .78rem; }
+#pkt-table thead th  { background: var(--card-hdr); position: sticky; top: 0; z-index: 1; }
+#pkt-table td        { vertical-align: middle; }
+
+/* ── Tabs ──────────────────────────────────────────────────────────────────── */
+.nav-tabs             { border-color: var(--border); }
+.nav-tabs .nav-link   { color: #6c757d; border-color: transparent; }
+.nav-tabs .nav-link:hover { color: #adb5bd; border-color: var(--border) var(--border) transparent; }
+.nav-tabs .nav-link.active {
+  color: #fff;
+  background: var(--card-bg);
+  border-color: var(--border) var(--border) var(--card-bg);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: var(--body-bg); }
+::-webkit-scrollbar-thumb  { background: #2e3148; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #404460; }
+
+/* ── Forms ─────────────────────────────────────────────────────────────────── */
+.form-control,
+.form-select {
+  background-color: #1c2035;
+  border-color: var(--border);
+  color: #dee2e6;
+}
+.form-control:focus,
+.form-select:focus {
+  background-color: #1c2035;
+  border-color: #0d6efd;
+  color: #fff;
+  box-shadow: 0 0 0 .2rem rgba(13,110,253,.25);
+}
+
+/* ── Alert cards ───────────────────────────────────────────────────────────── */
+.card.border-success-subtle { border-color: rgba(25,135,84,.4) !important; }
+.card.border-warning-subtle { border-color: rgba(255,193,7,.4) !important; }
+.card.border-danger-subtle  { border-color: rgba(220,53,69,.4) !important; }

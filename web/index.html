@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="vi" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DDoS Analyzer — Network Monitor</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="style.css" rel="stylesheet">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar px-3 border-bottom border-secondary-subtle">
+  <span class="navbar-brand fw-bold fs-6">
+    <i class="bi bi-shield-exclamation text-danger me-2"></i>DDoS Analyzer
+  </span>
+  <div class="d-flex align-items-center gap-2">
+    <span id="live-badge" class="badge bg-danger d-none">● LIVE</span>
+    <span id="ws-status" class="badge bg-secondary">Connecting…</span>
+  </div>
+</nav>
+
+<div class="container-fluid py-3 px-3">
+
+  <!-- Source Panel -->
+  <div class="row g-3 mb-3">
+    <!-- PCAP Upload -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="bi bi-file-earmark-arrow-up text-primary"></i>
+          <strong>Load PCAP File</strong>
+        </div>
+        <div class="card-body">
+          <div id="drop-zone" class="drop-zone rounded p-4 text-center mb-3">
+            <i class="bi bi-cloud-upload fs-2 text-muted"></i>
+            <p class="mb-1 mt-2 text-muted">Drag &amp; drop .pcap file here</p>
+            <small class="text-muted">or</small>
+            <div class="mt-2">
+              <label class="btn btn-outline-primary btn-sm">
+                Browse File
+                <input type="file" id="pcap-file" accept=".pcap" class="d-none">
+              </label>
+            </div>
+          </div>
+          <div id="upload-progress" class="d-none">
+            <div class="progress mb-2" style="height:4px">
+              <div class="progress-bar progress-bar-striped progress-bar-animated w-100"></div>
+            </div>
+            <small class="text-muted">Analyzing packets…</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Capture -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="bi bi-broadcast text-success"></i>
+          <strong>Live Capture (TShark)</strong>
+        </div>
+        <div class="card-body">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Network Interface</label>
+            <div class="input-group input-group-sm">
+              <select id="iface-select" class="form-select">
+                <option value="">Loading interfaces…</option>
+              </select>
+              <button id="refresh-ifaces" class="btn btn-outline-secondary" title="Refresh interfaces">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small mb-1">BPF Filter <span class="text-muted">(optional)</span></label>
+            <input type="text" id="bpf-filter" class="form-control form-control-sm"
+              placeholder="e.g. tcp port 80, not broadcast">
+          </div>
+          <div class="d-flex gap-2">
+            <button id="start-capture" class="btn btn-success btn-sm flex-fill">
+              <i class="bi bi-play-fill me-1"></i>Start Capture
+            </button>
+            <button id="stop-capture" class="btn btn-danger btn-sm flex-fill d-none">
+              <i class="bi bi-stop-fill me-1"></i>Stop
+            </button>
+          </div>
+          <div id="tshark-warning" class="alert alert-warning mt-3 mb-0 py-2 d-none small">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            TShark not found. Install
+            <a href="https://www.wireshark.org/download.html" class="alert-link" target="_blank">Wireshark</a>
+            to enable live capture.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-sm-3">
+      <div class="card stat-card">
+        <div class="card-body py-3">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label">Total Packets</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-sm-3">
+      <div class="card stat-card border-warning-subtle">
+        <div class="card-body py-3">
+          <div class="stat-value text-warning" id="stat-alerts">0</div>
+          <div class="stat-label">Alerts</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-sm-3">
+      <div class="card stat-card border-info-subtle">
+        <div class="card-body py-3">
+          <div class="stat-value text-info" id="stat-pps">0</div>
+          <div class="stat-label">Avg Pkt/s</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-sm-3">
+      <div class="card stat-card border-success-subtle">
+        <div class="card-body py-3">
+          <div class="stat-value text-success" id="stat-bw">0.00</div>
+          <div class="stat-label">Avg MB/s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-3" id="main-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-dashboard" type="button">
+        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-packets" type="button">
+        <i class="bi bi-list-ul me-1"></i>Packets
+        <span id="packet-count-badge" class="badge bg-secondary ms-1">0</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-alerts" type="button">
+        <i class="bi bi-shield-exclamation me-1"></i>Alerts
+        <span id="alert-count-badge" class="badge bg-secondary ms-1">0</span>
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- Dashboard Tab -->
+    <div class="tab-pane fade show active" id="tab-dashboard">
+      <div class="row g-3">
+        <div class="col-xl-8">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-graph-up me-2"></i>Packets / Second</div>
+            <div class="card-body p-2"><canvas id="chart-pps" height="110"></canvas></div>
+          </div>
+        </div>
+        <div class="col-xl-4">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-pie-chart me-2"></i>Protocol Distribution</div>
+            <div class="card-body p-2 d-flex justify-content-center">
+              <canvas id="chart-proto" style="max-height:220px"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-bar-chart-horizontal me-2"></i>Top 10 Source IPs</div>
+            <div class="card-body p-2"><canvas id="chart-topips" height="80"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Packets Tab -->
+    <div class="tab-pane fade" id="tab-packets">
+      <div class="card">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+          <strong>Packet List</strong>
+          <small class="text-muted">(latest 5 000)</small>
+          <input type="text" id="pkt-filter" class="form-control form-control-sm ms-auto"
+            style="max-width:220px" placeholder="Filter IP / protocol…">
+        </div>
+        <div id="pkt-table-scroll" class="table-responsive" style="max-height:620px;overflow-y:auto">
+          <table class="table table-sm table-hover table-dark mb-0" id="pkt-table">
+            <thead class="sticky-top">
+              <tr>
+                <th style="width:55px">#</th>
+                <th style="width:105px">Time</th>
+                <th>Src</th>
+                <th>Dst</th>
+                <th style="width:75px">Proto</th>
+                <th style="width:60px">Len</th>
+                <th>Info</th>
+              </tr>
+            </thead>
+            <tbody id="pkt-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerts Tab -->
+    <div class="tab-pane fade" id="tab-alerts">
+      <div id="alerts-container">
+        <div class="text-center text-muted py-5" id="alerts-empty">
+          <i class="bi bi-shield-check fs-1 d-block mb-3"></i>
+          No alerts detected — load a PCAP or start a live capture.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- Toast container -->
+<div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
