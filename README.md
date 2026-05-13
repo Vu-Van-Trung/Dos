@@ -22,23 +22,29 @@ Hỗ trợ đọc file `.pcap` và bắt gói tin trực tiếp qua TShark.
 
 ## Cài đặt trên Kali Linux
 
-### 1. Cài Go 1.21+
+### 1. Cài Go 1.21+ từ nguồn chính thức
+
+> ⚠️ **Không dùng `apt install golang-go`** — Kali cài **gccgo** (Go của GCC, phiên bản 1.18) thay vì Go chuẩn, gây lỗi build. Phải cài từ **go.dev**.
 
 ```bash
-# Kiểm tra phiên bản hiện tại
-go version
-
-# Nếu chưa có hoặc < 1.21 — cài từ nguồn chính thức
+# Tải Go 1.23 (bản stable mới nhất)
 wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+
+# Xóa bản cũ (nếu có), cài bản mới vào /usr/local
 sudo rm -rf /usr/local/go
 sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
 
-# Thêm vào PATH (thêm vào ~/.bashrc hoặc ~/.zshrc)
-echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+# QUAN TRỌNG: Thêm vào ĐẦU PATH (prepend) để ghi đè gccgo của hệ thống
+echo 'export PATH=/usr/local/go/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 
-go version   # => go version go1.23.4 linux/amd64
+# Kiểm tra — phải thấy "go1.23.4" KHÔNG có chữ "gccgo"
+go version
+# => go version go1.23.4 linux/amd64  ✓
 ```
+
+> ❌ Nếu thấy `go version go1.18 gccgo ...` — chưa đúng PATH.  
+> Chạy lại: `export PATH=/usr/local/go/bin:$PATH` (dùng **prepend**, không phải append `$PATH:...`).
 
 ### 2. Cài TShark
 
@@ -46,10 +52,10 @@ go version   # => go version go1.23.4 linux/amd64
 sudo apt update
 sudo apt install -y tshark
 
-# Cho phép user không phải root bắt gói tin
-sudo dpkg-reconfigure wireshark-common   # chọn Yes
+# Cho phép user thường bắt gói tin (chọn "Yes" khi được hỏi)
+sudo dpkg-reconfigure wireshark-common
 sudo usermod -aG wireshark $USER
-newgrp wireshark                         # hoặc đăng xuất / đăng nhập lại
+newgrp wireshark          # hoặc đăng xuất / đăng nhập lại
 ```
 
 ### 3. Clone và build
@@ -58,34 +64,39 @@ newgrp wireshark                         # hoặc đăng xuất / đăng nhập 
 git clone https://github.com/Vu-Van-Trung/Dos.git
 cd Dos
 
+# Hạ go directive xuống 1.18 nếu dùng Go cũ (bỏ qua nếu đã cài 1.23)
+# sed -i 's/^go 1.21/go 1.18/' go.mod
+
 # Tải dependency
 go mod tidy
 
-# Build (tạo file thực thi)
-go build -o ddos-analyzer .
+# Build — tắt CGO để tránh xung đột linker hệ thống
+CGO_ENABLED=0 go build -o ddos-analyzer .
 ```
 
 ### 4. Chạy
 
 ```bash
-# Chạy bình thường (PCAP + live capture nếu đã add vào group wireshark)
-./ddos-analyzer
-
-# Hoặc chạy với sudo để chắc chắn có quyền bắt gói tin
+# Cách 1: sudo (đảm bảo quyền capture)
 sudo ./ddos-analyzer
+
+# Cách 2: setcap — cấp quyền vĩnh viễn cho binary (không cần sudo)
+sudo setcap cap_net_raw,cap_net_admin+eip ./ddos-analyzer
+./ddos-analyzer
 ```
 
 Trình duyệt tự mở tại `http://127.0.0.1:8686`.  
 Nếu không tự mở: `xdg-open http://127.0.0.1:8686`
 
-### 5. (Tùy chọn) Dùng không cần sudo với setcap
+### Troubleshooting
 
-```bash
-# Cấp quyền capture cho binary thay vì dùng sudo
-sudo setcap cap_net_raw,cap_net_admin+eip ./ddos-analyzer
-
-./ddos-analyzer   # không cần sudo
-```
+| Lỗi | Nguyên nhân | Cách sửa |
+|-----|-------------|----------|
+| `go version go1.18 gccgo` | PATH chưa đúng | `export PATH=/usr/local/go/bin:$PATH` |
+| `maximum version supported by tidy is 1.18` | Đang dùng gccgo | Xem lỗi trên |
+| `/usr/bin/ld: error in Scrt1.o(.sframe)` | Linker hệ thống xung đột | Thêm `CGO_ENABLED=0` vào lệnh build |
+| TShark not found | TShark chưa cài | `sudo apt install tshark` |
+| Permission denied (live capture) | Thiếu quyền capture | Dùng `sudo` hoặc `setcap` |
 
 ---
 
