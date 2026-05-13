@@ -25,13 +25,15 @@ var tsharkCandidates = []string{
 }
 
 var fields = []string{
-	"frame.number", "frame.time_epoch",
-	"ip.src", "ip.dst", "ip.proto",
-	"tcp.srcport", "tcp.dstport", "tcp.flags",
-	"udp.srcport", "udp.dstport",
-	"icmp.type",
-	"arp.src.proto_ipv4", "arp.dst.proto_ipv4",
-	"frame.len",
+	"frame.number", "frame.time_epoch",         // 0, 1
+	"ip.src", "ip.dst", "ip.proto",             // 2, 3, 4
+	"tcp.srcport", "tcp.dstport", "tcp.flags",  // 5, 6, 7
+	"udp.srcport", "udp.dstport",               // 8, 9
+	"icmp.type",                                // 10
+	"arp.src.proto_ipv4", "arp.dst.proto_ipv4", // 11, 12
+	"frame.len",                                // 13
+	"http.request.method",                      // 14 — Layer 7 HTTP
+	"dns.flags.response",                       // 15 — Layer 7 DNS
 }
 
 var icmpNames = map[int]string{0: "Echo Reply", 3: "Unreachable", 8: "Echo Request", 11: "TTL Exceeded"}
@@ -191,20 +193,22 @@ func (c *Capture) parseLine(line string) *analyzer.PacketInfo {
 		parts = append(parts, "")
 	}
 
-	frameNo   := parts[0]
-	timeEpoch := parts[1]
-	ipSrc     := parts[2]
-	ipDst     := parts[3]
-	ipProto   := parts[4]
-	tcpSport  := parts[5]
-	tcpDport  := parts[6]
-	tcpFlags  := parts[7]
-	udpSport  := parts[8]
-	udpDport  := parts[9]
-	icmpType  := parts[10]
-	arpSrc    := parts[11]
-	arpDst    := parts[12]
-	frameLen  := parts[13]
+	frameNo    := parts[0]
+	timeEpoch  := parts[1]
+	ipSrc      := parts[2]
+	ipDst      := parts[3]
+	ipProto    := parts[4]
+	tcpSport   := parts[5]
+	tcpDport   := parts[6]
+	tcpFlags   := parts[7]
+	udpSport   := parts[8]
+	udpDport   := parts[9]
+	icmpType   := parts[10]
+	arpSrc     := parts[11]
+	arpDst     := parts[12]
+	frameLen   := parts[13]
+	httpMethod := parts[14] // Layer 7
+	dnsResp    := parts[15] // Layer 7
 
 	c.counter++
 
@@ -242,6 +246,10 @@ func (c *Capture) parseLine(line string) *analyzer.PacketInfo {
 			}
 		}
 		p.FlagsStr = p.Flags.String()
+		// Layer 7: HTTP method từ tshark field thực tế
+		if httpMethod != "" {
+			p.HTTPMethod = httpMethod
+		}
 		switch {
 		case sport == 80 || dport == 80:
 			p.Protocol = "HTTP"
@@ -252,7 +260,11 @@ func (c *Capture) parseLine(line string) *analyzer.PacketInfo {
 		default:
 			p.Protocol = "TCP"
 		}
-		p.Info = fmt.Sprintf("%d → %d [%s]", sport, dport, p.FlagsStr)
+		if httpMethod != "" {
+			p.Info = fmt.Sprintf("%s %d → %d [%s]", httpMethod, sport, dport, p.FlagsStr)
+		} else {
+			p.Info = fmt.Sprintf("%d → %d [%s]", sport, dport, p.FlagsStr)
+		}
 
 	case 17: // UDP
 		sport, _ := strconv.Atoi(udpSport)
@@ -261,6 +273,8 @@ func (c *Capture) parseLine(line string) *analyzer.PacketInfo {
 		p.DstPort = dport
 		if sport == 53 || dport == 53 {
 			p.Protocol = "DNS"
+			// Layer 7: DNS response flag từ tshark
+			p.IsDNSResponse = dnsResp == "1"
 		} else {
 			p.Protocol = "UDP"
 		}

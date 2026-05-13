@@ -14,13 +14,14 @@ const (
 type AttackType string
 
 const (
-	AttackSYNFlood   AttackType = "SYN Flood"
-	AttackUDPFlood   AttackType = "UDP Flood"
-	AttackICMPFlood  AttackType = "ICMP/Ping Flood"
-	AttackHTTPFlood  AttackType = "HTTP Flood"
-	AttackVolumetric AttackType = "Volumetric Attack"
-	AttackSingleSrc  AttackType = "Single Source DoS"
-	AttackPortScan   AttackType = "Port Scan"
+	AttackSYNFlood         AttackType = "SYN Flood"
+	AttackUDPFlood         AttackType = "UDP Flood"
+	AttackICMPFlood        AttackType = "ICMP/Ping Flood"
+	AttackHTTPFlood        AttackType = "HTTP Flood"
+	AttackVolumetric       AttackType = "Volumetric Attack"
+	AttackSingleSrc        AttackType = "Single Source DoS"
+	AttackPortScan         AttackType = "Port Scan"
+	AttackDNSAmplification AttackType = "DNS Amplification"
 )
 
 // TCPFlags giữ trạng thái các bit cờ TCP.
@@ -61,18 +62,21 @@ func (f TCPFlags) String() string {
 
 // PacketInfo chứa thông tin phân tích của một gói tin mạng.
 type PacketInfo struct {
-	Number       int      `json:"number"`
-	Timestamp    float64  `json:"timestamp"`
-	SrcIP        string   `json:"src_ip"`
-	DstIP        string   `json:"dst_ip"`
-	SrcPort      int      `json:"src_port,omitempty"`
-	DstPort      int      `json:"dst_port,omitempty"`
-	Protocol     string   `json:"protocol"`
-	Length       int      `json:"length"`
-	Flags        TCPFlags `json:"flags"`
-	FlagsStr     string   `json:"flags_str"`
-	Info         string   `json:"info"`
-	IsSuspicious bool     `json:"is_suspicious"`
+	Number        int      `json:"number"`
+	Timestamp     float64  `json:"timestamp"`
+	SrcIP         string   `json:"src_ip"`
+	DstIP         string   `json:"dst_ip"`
+	SrcPort       int      `json:"src_port,omitempty"`
+	DstPort       int      `json:"dst_port,omitempty"`
+	Protocol      string   `json:"protocol"`
+	Length        int      `json:"length"`
+	Flags         TCPFlags `json:"flags"`
+	FlagsStr      string   `json:"flags_str"`
+	Info          string   `json:"info"`
+	IsSuspicious  bool     `json:"is_suspicious"`
+	// Layer 7 fields
+	HTTPMethod    string   `json:"http_method,omitempty"`    // GET, POST, HEAD, ...
+	IsDNSResponse bool     `json:"is_dns_response,omitempty"` // true = DNS response
 }
 
 // Alert đại diện cho một mối đe dọa bảo mật được phát hiện.

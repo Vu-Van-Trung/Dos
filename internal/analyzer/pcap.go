@@ -190,7 +190,16 @@ func parseRawPacket(data []byte, n int, ts float64, origLen int) *PacketInfo {
 		default:
 			p.Protocol = "TCP"
 		}
-		p.Info = fmt.Sprintf("%d → %d [%s]", p.SrcPort, p.DstPort, p.FlagsStr)
+		// Layer 7: trích xuất HTTP method từ TCP payload
+		tcpHdrLen := int((transport[12] >> 4) * 4)
+		if tcpHdrLen >= 20 && len(transport) > tcpHdrLen {
+			p.HTTPMethod = extractHTTPMethod(transport[tcpHdrLen:])
+		}
+		if p.HTTPMethod != "" {
+			p.Info = fmt.Sprintf("%s %d → %d [%s]", p.HTTPMethod, p.SrcPort, p.DstPort, p.FlagsStr)
+		} else {
+			p.Info = fmt.Sprintf("%d → %d [%s]", p.SrcPort, p.DstPort, p.FlagsStr)
+		}
 
 	case 17: // UDP
 		if len(transport) < 8 {
@@ -200,6 +209,11 @@ func parseRawPacket(data []byte, n int, ts float64, origLen int) *PacketInfo {
 		p.DstPort = int(binary.BigEndian.Uint16(transport[2:4]))
 		if p.SrcPort == 53 || p.DstPort == 53 {
 			p.Protocol = "DNS"
+			// Layer 7: phân tích DNS QR bit (byte 2-3 của DNS header = UDP payload offset 8)
+			if len(transport) >= 12 {
+				dnsFlags := binary.BigEndian.Uint16(transport[10:12])
+				p.IsDNSResponse = dnsFlags&0x8000 != 0
+			}
 		} else {
 			p.Protocol = "UDP"
 		}
@@ -217,4 +231,17 @@ func parseRawPacket(data []byte, n int, ts float64, origLen int) *PacketInfo {
 		}
 	}
 	return p
+}
+
+// extractHTTPMethod nhận diện HTTP request method từ đầu TCP payload.
+func extractHTTPMethod(payload []byte) string {
+	if len(payload) < 4 {
+		return ""
+	}
+	for _, m := range []string{"GET", "POST", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS"} {
+		if len(payload) > len(m) && string(payload[:len(m)]) == m && payload[len(m)] == ' ' {
+			return m
+		}
+	}
+	return ""
 }

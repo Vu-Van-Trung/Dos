@@ -3,6 +3,7 @@ package analyzer
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // ── Ngưỡng phát hiện ─────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ func (d *DDoSDetector) Analyze(packets []PacketInfo) ([]Alert, *NetworkStats) {
 	alerts = append(alerts, d.detectUDPFlood(packets, stats)...)
 	alerts = append(alerts, d.detectICMPFlood(packets, stats)...)
 	alerts = append(alerts, d.detectHTTPFlood(packets, stats)...)
+	alerts = append(alerts, d.detectDNSAmplification(packets, stats)...) // Layer 7
 	alerts = append(alerts, d.detectVolumetric(packets, stats)...)
 	alerts = append(alerts, d.detectSingleSource(packets, stats)...)
 	alerts = append(alerts, d.detectPortScan(packets, stats)...)
@@ -288,7 +290,7 @@ func (d *DDoSDetector) detectICMPFlood(packets []PacketInfo, stats *NetworkStats
 	}}
 }
 
-// ── HTTP Flood ────────────────────────────────────────────────────────────────
+// ── HTTP Flood (Layer 7) ──────────────────────────────────────────────────────
 
 func (d *DDoSDetector) detectHTTPFlood(packets []PacketInfo, stats *NetworkStats) []Alert {
 	bySrc := make(map[string][]PacketInfo)
@@ -307,13 +309,33 @@ func (d *DDoSDetector) detectHTTPFlood(packets []PacketInfo, stats *NetworkStats
 		if rate > 300 {
 			sev = SeverityHigh
 		}
+
+		// Layer 7: đếm HTTP method từ payload thực tế
+		methodCount := make(map[string]int)
+		withMethod := 0
+		for _, p := range pkts {
+			if p.HTTPMethod != "" {
+				methodCount[p.HTTPMethod]++
+				withMethod++
+			}
+		}
+		methodSummary := ""
+		if withMethod > 0 {
+			parts := make([]string, 0, len(methodCount))
+			for m, c := range methodCount {
+				parts = append(parts, fmt.Sprintf("%s×%d", m, c))
+			}
+			sort.Strings(parts)
+			methodSummary = " [" + strings.Join(parts, " ") + "]"
+		}
+
 		alerts = append(alerts, Alert{
 			ID:         d.nid(),
 			AttackType: AttackHTTPFlood,
 			Severity:   sev,
 			Description: fmt.Sprintf(
-				"HTTP Flood từ %s — %.0f req/s (%d HTTP packets).",
-				srcIP, rate, len(pkts),
+				"HTTP Flood từ %s — %.0f req/s (%d packets)%s.",
+				srcIP, rate, len(pkts), methodSummary,
 			),
 			SourceIPs:       []string{srcIP},
 			TargetIP:        topValue(pkts, func(p PacketInfo) string { return p.DstIP }),
@@ -324,7 +346,83 @@ func (d *DDoSDetector) detectHTTPFlood(packets []PacketInfo, stats *NetworkStats
 			EvidencePackets: evidenceIDs(pkts, 200),
 			Recommendation: "• Triển khai Web Application Firewall (WAF).\n" +
 				"• Bật CAPTCHA cho request bất thường.\n" +
-				"• Rate-limit HTTP theo IP (Nginx / HAProxy).",
+				"• Rate-limit HTTP theo IP (Nginx / HAProxy).\n" +
+				"• Phân tích User-Agent để phát hiện bot.",
+			SeverityColor: d.sevColor(sev),
+			SeverityBg:    d.sevBg(sev),
+		})
+	}
+	return alerts
+}
+
+// ── DNS Amplification (Layer 7) ───────────────────────────────────────────────
+
+func (d *DDoSDetector) detectDNSAmplification(packets []PacketInfo, stats *NetworkStats) []Alert {
+	// Thu thập DNS query bytes (client → resolver) và response bytes (resolver → victim)
+	queryBytes := make(map[string]int64)  // victim IP → tổng bytes query gửi đi
+	respByVictim := make(map[string][]PacketInfo) // victim IP → các response nhận về
+
+	for _, p := range packets {
+		if p.Protocol != "DNS" {
+			continue
+		}
+		if p.IsDNSResponse {
+			// Response: src=resolver (sport=53), dst=victim
+			respByVictim[p.DstIP] = append(respByVictim[p.DstIP], p)
+		} else {
+			// Query: src=client, dst=resolver (dport=53)
+			queryBytes[p.SrcIP] += int64(p.Length)
+		}
+	}
+
+	const minRespPkts = 20
+	const minAmplFactor = 5.0
+
+	var alerts []Alert
+	for victimIP, respPkts := range respByVictim {
+		if len(respPkts) < minRespPkts {
+			continue
+		}
+		var totalRespBytes int64
+		for _, p := range respPkts {
+			totalRespBytes += int64(p.Length)
+		}
+		qb := queryBytes[victimIP]
+		if qb == 0 {
+			qb = 1
+		}
+		amplFactor := float64(totalRespBytes) / float64(qb)
+		if amplFactor < minAmplFactor {
+			continue
+		}
+		respRate := float64(len(respPkts)) / stats.Duration
+		sev := SeverityMedium
+		if amplFactor > 50 {
+			sev = SeverityHigh
+		}
+		if amplFactor > 100 {
+			sev = SeverityCritical
+		}
+		resolvers := countBy(respPkts, func(p PacketInfo) string { return p.SrcIP })
+		alerts = append(alerts, Alert{
+			ID:         d.nid(),
+			AttackType: AttackDNSAmplification,
+			Severity:   sev,
+			Description: fmt.Sprintf(
+				"DNS Amplification nhắm vào %s — %.0f KB response từ %d DNS resolver (hệ số khuếch đại ×%.0f).",
+				victimIP, float64(totalRespBytes)/1024, len(resolvers), amplFactor,
+			),
+			SourceIPs:       topNMap(resolvers, 5),
+			TargetIP:        victimIP,
+			PacketCount:     len(respPkts),
+			Rate:            respRate,
+			StartTime:       respPkts[0].Timestamp,
+			EndTime:         respPkts[len(respPkts)-1].Timestamp,
+			EvidencePackets: evidenceIDs(respPkts, 200),
+			Recommendation: "• Chặn DNS response từ các IP resolver không tin cậy.\n" +
+				"• Vô hiệu hóa open DNS resolver trên hệ thống.\n" +
+				"• Bật Response Rate Limiting (RRL) trên DNS server.\n" +
+				"• Dùng DNS firewall lọc response bất thường.",
 			SeverityColor: d.sevColor(sev),
 			SeverityBg:    d.sevBg(sev),
 		})
